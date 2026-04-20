@@ -1,33 +1,35 @@
+---
 
-# 🚀 HireNest | The Future of Hiring
+# HireNest | The Future of Hiring
 
 ![HireNest Hero](https://github.com/axiswanderer/hirenest/blob/main/screenshots/hero.png)
-
 
 > **HireNest** is a modern, full-stack recruitment platform that bridges the gap between talent and opportunity. Built with a robust **FastAPI** backend and a high-performance **React** frontend, it features role-based portals, real-time messaging, and secure application tracking.
 
 <div align="center">
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.95%2B-009688?style=for-the-badge&logo=fastapi)
-![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react)
-![Tailwind](https://img.shields.io/badge/Tailwind_CSS-3.0-38B2AC?style=for-the-badge&logo=tailwind-css)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791?style=for-the-badge&logo=postgresql)
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge\&logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.95%2B-009688?style=for-the-badge\&logo=fastapi)
+![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge\&logo=react)
+![Tailwind](https://img.shields.io/badge/Tailwind_CSS-3.0-38B2AC?style=for-the-badge\&logo=tailwind-css)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791?style=for-the-badge\&logo=postgresql)
 
 </div>
 
 ---
 
-## 🌟 Key Features
+## Key Features
 
-### 🏢 For Recruiters
+### For Recruiters
+
 * **Smart Job Management:** Post, edit, and close job listings instantly.
 * **Applicant Dashboard:** View all candidates in a centralized table with status tracking.
 * **Rich Profiles:** Access applicant bios, portfolios, and download PDF resumes.
 * **Pipeline Control:** Move candidates from *Pending* → *Interviewing* → *Accepted* or *Rejected*.
 * **Direct Messaging:** Chat securely with applicants directly from the dashboard.
 
-### 👨‍💻 For Applicants
+### For Applicants
+
 * **One-Click Apply:** Upload your resume once and apply to multiple roles effortlessly.
 * **Application Tracker:** Real-time status updates on all your submitted applications.
 * **Professional Profile:** Build a brand with a custom avatar, bio, and portfolio links.
@@ -35,29 +37,31 @@
 
 ---
 
-## 📸 Application Demo
+## Application Demo
 
-| **Recruiter Portal** | **Applicant Profile** |
-|:---:|:---:|
+|                                    **Recruiter Portal**                                    |                                  **Applicant Profile**                                 |
+| :----------------------------------------------------------------------------------------: | :------------------------------------------------------------------------------------: |
 | ![Dashboard](https://github.com/axiswanderer/hirenest/blob/main/screenshots/dashboard.png) | ![Profile](https://github.com/axiswanderer/hirenest/blob/main/screenshots/profile.png) |
-| *Manage jobs and view candidates* | *Rich profile with portfolio & bio* |
+|                              *Manage jobs and view candidates*                             |                           *Rich profile with portfolio & bio*                          |
 
-| **Real-time Chat** | **Live Job Board** |
-|:---:|:---:|
+|                                **Real-time Chat**                                |                                **Live Job Board**                                |
+| :------------------------------------------------------------------------------: | :------------------------------------------------------------------------------: |
 | ![Chat](https://github.com/axiswanderer/hirenest/blob/main/screenshots/chat.png) | ![Hero](https://github.com/axiswanderer/hirenest/blob/main/screenshots/hero.png) |
-| *Direct messaging between parties* | *Modern, responsive landing page* |
+|                        *Direct messaging between parties*                        |                         *Modern, responsive landing page*                        |
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
-### **Backend (The Engine)**
+### Backend (The Engine)
+
 * **Framework:** [FastAPI](https://fastapi.tiangolo.com/) - High-performance, async Python framework.
 * **Database:** PostgreSQL with [SQLAlchemy ORM](https://www.sqlalchemy.org/).
 * **Authentication:** OAuth2 with JWT Tokens (Secure Login/Register).
 * **Security:** Passlib (Bcrypt) for password hashing.
 
-### **Frontend (The Interface)**
+### Frontend (The Interface)
+
 * **Framework:** [React](https://react.dev/) (Vite) - Blazing fast SPA architecture.
 * **Styling:** [Tailwind CSS](https://tailwindcss.com/) - Utility-first professional design.
 * **Animations:** [Framer Motion](https://www.framer.com/motion/) - Smooth UI transitions.
@@ -66,22 +70,25 @@
 
 ---
 
-## 🚀 Installation & Setup
+## Installation & Setup
 
 Follow these steps to set up HireNest locally.
 
-### **Prerequisites**
+### Prerequisites
+
 * Python 3.10+
 * Node.js 16+
 * PostgreSQL (Local or Docker container)
 
-### **1. Clone the Repository**
+### 1. Clone the Repository
+
 ```bash
 git clone https://github.com/axiswanderer/hirenest.git
 cd hirenest
 ```
 
-### **2. Backend Setup**
+### 2. Backend Setup
+
 Navigate to the backend directory and set up the environment.
 
 ```bash
@@ -101,17 +108,21 @@ pip install -r requirements.txt
 ```
 
 **Database Configuration:**
+
 1. Ensure PostgreSQL is running.
 2. Create a database named `jobportal_db`.
 3. The app connects via `postgresql://postgres:password@localhost/jobportal_db`. (Update `core/database.py` if your credentials differ).
 
 **Run the Server:**
+
 ```bash
 uvicorn main:app --reload
 ```
-The API will start at http://localhost:8000
 
-### **3. Frontend Setup**
+The API will start at [http://localhost:8000](http://localhost:8000)
+
+### 3. Frontend Setup
+
 Open a new terminal and navigate to the frontend directory.
 
 ```bash
@@ -123,11 +134,12 @@ npm install
 # Start the Development Server
 npm run dev
 ```
-The UI will start at http://localhost:5173
+
+The UI will start at [http://localhost:5173](http://localhost:5173)
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 HireNest/
@@ -150,26 +162,26 @@ HireNest/
 
 ---
 
-## 🛡️ API Documentation
+## API Documentation
 
 HireNest includes interactive API documentation powered by Swagger UI.
 
 1. Run the backend server.
-2. Visit http://localhost:8000/docs.
+2. Visit [http://localhost:8000/docs](http://localhost:8000/docs).
 3. Test endpoints (Login, Post Job, Send Message) directly in your browser.
 
 ---
 
-## 🔮 Roadmap (Future...)
+## Roadmap (Future...)
 
-- [ ] **Email Notifications:** SMTP integration for status updates.
-- [ ] **Advanced Search:** Filter jobs by salary, location, and type.
-- [ ] **Admin Panel:** User management and analytics dashboard.
-- [ ] **Cloud Storage:** S3 integration for scalable file hosting.
+* [ ] Email Notifications: SMTP integration for status updates.
+* [ ] Advanced Search: Filter jobs by salary, location, and type.
+* [ ] Admin Panel: User management and analytics dashboard.
+* [ ] Cloud Storage: S3 integration for scalable file hosting.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -181,11 +193,10 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License.
 
 ---
 
-**Made with ❤️ by @axiswanderer**
-```
+**Made with love by @axiswanderer**
