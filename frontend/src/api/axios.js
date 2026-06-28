@@ -15,13 +15,17 @@ api.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
-// Auto-logout when token is expired or invalid
+// Auto-logout only when an *authenticated* request gets 401 (expired token).
+// Never redirect for the login endpoint itself.
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response?.status === 401) {
+        const isAuthEndpoint = error.config?.url?.includes('/auth/');
+        if (error.response?.status === 401 && !isAuthEndpoint) {
             localStorage.removeItem('token');
             localStorage.removeItem('is_recruiter');
+            localStorage.removeItem('is_admin');
+            localStorage.removeItem('user_id');
             window.location.href = '/login';
         }
         return Promise.reject(error);

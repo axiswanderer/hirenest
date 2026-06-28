@@ -1,108 +1,196 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Briefcase, UploadCloud, Users, CheckCircle, Search, ArrowRight, AlertCircle } from 'lucide-react';
+import {
+    Briefcase, UploadCloud, Users, CheckCircle, Search, ArrowRight,
+    AlertCircle, ChevronLeft, ChevronRight, Bookmark, BookmarkCheck,
+    Zap, Shield, TrendingUp, MapPin, Building2
+} from 'lucide-react';
 
-const MAX_RESUME_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_RESUME_SIZE = 10 * 1024 * 1024;
+const JOBS_PER_PAGE = 10;
 
 const JobBoard = () => {
     const { user } = useAuth();
     const [jobs, setJobs] = useState([]);
+    const [totalJobs, setTotalJobs] = useState(0);
+    const [page, setPage] = useState(1);
+    const [searchQ, setSearchQ] = useState('');
+    const [filterLocation, setFilterLocation] = useState('');
+    const [filterCompany, setFilterCompany] = useState('');
     const [file, setFile] = useState(null);
     const [activeJobId, setActiveJobId] = useState(null);
     const [applyError, setApplyError] = useState('');
     const [applySuccess, setApplySuccess] = useState('');
     const [fetchError, setFetchError] = useState('');
+    const [appliedJobIds, setAppliedJobIds] = useState(new Set());
+    const [savedJobIds, setSavedJobIds] = useState(new Set());
 
     useEffect(() => {
-        const fetchJobs = async () => {
-            try {
-                const res = await api.get('/jobs/');
-                setJobs(res.data);
-            } catch (err) {
-                setFetchError('Failed to load jobs. Please refresh the page.');
-            }
-        };
-        fetchJobs();
-    }, []);
+        if (!user || user.isRecruiter) return;
+        api.get('/applications/my-job-ids').then(res => setAppliedJobIds(new Set(res.data))).catch(() => {});
+        api.get('/jobs/saved').then(res => setSavedJobIds(new Set(res.data.map(s => s.job_id)))).catch(() => {});
+    }, [user]);
+
+    const fetchJobs = useCallback(async () => {
+        setFetchError('');
+        const params = { skip: (page - 1) * JOBS_PER_PAGE, limit: JOBS_PER_PAGE };
+        if (searchQ) params.q = searchQ;
+        if (filterLocation) params.location = filterLocation;
+        if (filterCompany) params.company = filterCompany;
+        try {
+            const [jobsRes, countRes] = await Promise.all([
+                api.get('/jobs/', { params }),
+                api.get('/jobs/count', { params: { q: params.q, location: params.location, company: params.company } }),
+            ]);
+            setJobs(jobsRes.data);
+            setTotalJobs(countRes.data.total);
+        } catch {
+            setFetchError('Failed to load jobs. Please refresh.');
+        }
+    }, [page, searchQ, filterLocation, filterCompany]);
+
+    useEffect(() => { fetchJobs(); }, [fetchJobs]);
+    useEffect(() => { setPage(1); }, [searchQ, filterLocation, filterCompany]);
 
     const handleFileChange = (e) => {
         setApplyError('');
-        const selected = e.target.files[0];
-        if (!selected) return;
-        if (selected.type !== 'application/pdf') {
-            setApplyError('Only PDF files are accepted.');
-            e.target.value = '';
-            return;
-        }
-        if (selected.size > MAX_RESUME_SIZE) {
-            setApplyError('File too large. Maximum size is 10 MB.');
-            e.target.value = '';
-            return;
-        }
-        setFile(selected);
+        const f = e.target.files[0];
+        if (!f) return;
+        if (f.type !== 'application/pdf') { setApplyError('Only PDF files accepted.'); e.target.value = ''; return; }
+        if (f.size > MAX_RESUME_SIZE) { setApplyError('File too large. Max 10 MB.'); e.target.value = ''; return; }
+        setFile(f);
     };
 
     const handleApply = async (jobId) => {
-        if (!file) {
-            setApplyError('Please select a PDF file first.');
-            return;
-        }
+        if (!file) { setApplyError('Select a PDF file first.'); return; }
         setApplyError('');
-        const formData = new FormData();
-        formData.append('job_id', jobId);
-        formData.append('applicant_name', 'Applicant');
-        formData.append('file', file);
-
+        const fd = new FormData();
+        fd.append('job_id', jobId);
+        fd.append('applicant_name', 'Applicant');
+        fd.append('file', file);
         try {
-            await api.post('/applications/', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
+            await api.post('/applications/', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
             setApplySuccess('Application submitted!');
+            setAppliedJobIds(prev => new Set([...prev, jobId]));
             setFile(null);
             setActiveJobId(null);
             setTimeout(() => setApplySuccess(''), 3000);
         } catch (err) {
-            const detail = err.response?.data?.detail;
-            setApplyError(detail || 'Application failed. Please try again.');
+            setApplyError(err.response?.data?.detail || 'Application failed.');
         }
     };
 
-    const fadeInUp = {
-        hidden: { opacity: 0, y: 30 },
-        visible: { opacity: 1, y: 0, transition: { duration: 0.6 } }
+    const toggleSave = async (jobId) => {
+        if (savedJobIds.has(jobId)) {
+            await api.delete(`/jobs/${jobId}/save`).catch(() => {});
+            setSavedJobIds(prev => { const s = new Set(prev); s.delete(jobId); return s; });
+        } else {
+            await api.post(`/jobs/${jobId}/save`).catch(() => {});
+            setSavedJobIds(prev => new Set([...prev, jobId]));
+        }
     };
 
-    return (
-        <div className="bg-slate-900 min-h-screen font-sans text-white">
+    const totalPages = Math.max(1, Math.ceil(totalJobs / JOBS_PER_PAGE));
 
-            {/* --- HERO SECTION --- */}
-            <section className="relative pt-20 pb-32 overflow-hidden">
-                <div className="absolute inset-0 bg-blue-600/10 radial-gradient"></div>
+    const avatarUrl = (job) => {
+        const av = job.recruiter?.profile?.avatar_url;
+        if (!av) return null;
+        return `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/static/avatars/${av.split(/[\\/]/).pop()}`;
+    };
+
+    const containerVariants = {
+        hidden: {},
+        visible: { transition: { staggerChildren: 0.07 } }
+    };
+    const itemVariants = {
+        hidden: { opacity: 0, y: 20 },
+        visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: 'easeOut' } }
+    };
+
+    const stats = [
+        { label: 'Active Jobs', value: '1,200+', icon: <Briefcase className="w-5 h-5" />, color: 'text-cyan-400' },
+        { label: 'Companies', value: '450+', icon: <Building2 className="w-5 h-5" />, color: 'text-violet-400' },
+        { label: 'Hired', value: '12k+', icon: <Users className="w-5 h-5" />, color: 'text-blue-400' },
+        { label: 'Success Rate', value: '98%', icon: <TrendingUp className="w-5 h-5" />, color: 'text-emerald-400' },
+    ];
+
+    const features = [
+        { icon: <Search className="w-7 h-7 text-cyan-400" />, title: 'Smart Discovery', desc: 'AI-powered matching connects you with roles that fit your exact skill set and career goals.', glow: 'rgba(6,182,212,0.15)' },
+        { icon: <UploadCloud className="w-7 h-7 text-violet-400" />, title: 'One-Click Apply', desc: 'Upload your resume once and apply to multiple companies in seconds — no repetitive forms.', glow: 'rgba(124,58,237,0.15)' },
+        { icon: <Shield className="w-7 h-7 text-blue-400" />, title: 'Verified Listings', desc: 'Every company and job listing is verified, so you can focus on what matters most.', glow: 'rgba(59,130,246,0.15)' },
+    ];
+
+    const testimonials = [
+        { name: 'Sarah J.', role: 'Software Engineer', quote: 'HireNest made finding a remote role effortless. The entire process felt like it was built for humans, not bots.' },
+        { name: 'David K.', role: 'Product Manager', quote: 'As a recruiter, the quality of candidates I find here is unmatched. The AI screening alone saves me hours.' },
+        { name: 'Elena R.', role: 'UX Designer', quote: 'I love the clean experience and speed. No more filling out 10-page forms — just apply and wait.' },
+    ];
+
+    return (
+        <div className="grid-bg min-h-screen text-white">
+
+            {/* ── HERO ── */}
+            <section className="relative pt-24 pb-36 overflow-hidden">
+                {/* Background glow blobs */}
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] pointer-events-none" style={{ background: 'radial-gradient(ellipse at center, rgba(6,182,212,0.12) 0%, rgba(59,130,246,0.06) 40%, transparent 70%)' }} />
+                <div className="absolute -top-40 -left-40 w-96 h-96 orb-violet animate-orb-1 pointer-events-none" />
+                <div className="absolute -bottom-20 -right-40 w-96 h-96 orb-cyan animate-orb-2 pointer-events-none" />
+
+                {/* Scan line */}
+                <div className="scan-container absolute inset-0 pointer-events-none">
+                    <div className="scan-line" />
+                </div>
+
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-                    <motion.div initial="hidden" animate="visible" variants={fadeInUp}>
-                        <span className="inline-block py-1 px-3 rounded-full bg-blue-900/50 border border-blue-500/30 text-blue-300 text-sm font-semibold mb-6">
-                            🚀 The Future of Hiring is Here
-                        </span>
-                        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
-                            Find Your Next <br />
-                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
-                                Big Opportunity
-                            </span>
+                    <motion.div
+                        initial={{ opacity: 0, y: 30 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.7, ease: 'easeOut' }}
+                    >
+                        <motion.span
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: 0.15, duration: 0.4 }}
+                            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold mb-8"
+                            style={{ background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.28)', color: '#22d3ee' }}
+                        >
+                            <Zap className="w-3.5 h-3.5" />
+                            AI-Powered Recruiting Platform
+                        </motion.span>
+
+                        <h1 className="text-5xl md:text-7xl font-black tracking-tight mb-6 leading-[1.05]">
+                            Find Your Next<br />
+                            <span className="gradient-text-animated animate-gradient-x">Big Opportunity</span>
                         </h1>
-                        <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-10">
-                            HireNest connects top-tier talent with world-class companies.
-                            Seamless, fast, and built for the modern workforce.
+
+                        <p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+                            HireNest connects top-tier talent with world-class companies. Seamless, intelligent, and built for the modern workforce.
                         </p>
-                        <div className="flex justify-center gap-4">
-                            <a href="#jobs" className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-lg font-medium transition shadow-lg shadow-blue-500/25 flex items-center">
-                                Browse Jobs <ArrowRight className="ml-2 w-4 h-4" />
+
+                        <div className="flex flex-wrap justify-center gap-4">
+                            <a
+                                href="#jobs"
+                                className="btn-primary btn-shimmer flex items-center gap-2 px-8 py-3.5 text-sm font-semibold"
+                            >
+                                Browse Jobs <ArrowRight className="w-4 h-4" />
                             </a>
                             {!user && (
-                                <Link to="/register" className="bg-slate-800 hover:bg-slate-700 text-white px-8 py-3 rounded-lg font-medium border border-slate-700 transition">
-                                    Join Now
+                                <Link
+                                    to="/register"
+                                    className="btn-ghost flex items-center gap-2 px-8 py-3.5 text-sm font-semibold"
+                                >
+                                    Join HireNest
+                                </Link>
+                            )}
+                            {user?.isRecruiter && (
+                                <Link
+                                    to="/post-job"
+                                    className="btn-ghost flex items-center gap-2 px-8 py-3.5 text-sm font-semibold"
+                                >
+                                    + Post a Job
                                 </Link>
                             )}
                         </div>
@@ -110,199 +198,336 @@ const JobBoard = () => {
                 </div>
             </section>
 
-            {/* --- STATS SECTION --- */}
-            <div className="border-y border-slate-800 bg-slate-900/50 backdrop-blur-sm">
-                <div className="max-w-7xl mx-auto px-4 py-12 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-                    {[
-                        { label: "Active Jobs", value: "1,200+" },
-                        { label: "Companies", value: "450+" },
-                        { label: "Hired Candidates", value: "12k+" },
-                        { label: "Success Rate", value: "98%" },
-                    ].map((stat, i) => (
-                        <div key={i}>
-                            <div className="text-3xl font-bold text-white mb-1">{stat.value}</div>
-                            <div className="text-slate-400 text-sm uppercase tracking-wider">{stat.label}</div>
-                        </div>
+            {/* ── STATS ── */}
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
+                <div className="max-w-7xl mx-auto px-4 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
+                    {stats.map((s, i) => (
+                        <motion.div
+                            key={i}
+                            initial={{ opacity: 0, y: 16 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            transition={{ delay: i * 0.08, duration: 0.4 }}
+                            className="text-center"
+                        >
+                            <div className={`flex justify-center mb-2 ${s.color}`}>{s.icon}</div>
+                            <div className={`text-3xl font-black mb-1 ${s.color}`}>{s.value}</div>
+                            <div className="text-slate-500 text-xs uppercase tracking-widest font-medium">{s.label}</div>
+                        </motion.div>
                     ))}
                 </div>
             </div>
 
-            {/* --- VALUE PROPOSITION --- */}
-            <section className="py-24 bg-slate-900">
+            {/* ── FEATURES ── */}
+            <section className="py-28">
                 <div className="max-w-7xl mx-auto px-4">
-                    <div className="text-center mb-16">
-                        <h2 className="text-3xl font-bold mb-4">Why Choose HireNest?</h2>
-                        <p className="text-slate-400">Everything you need to manage your career or your hiring pipeline.</p>
-                    </div>
-                    <div className="grid md:grid-cols-3 gap-8">
-                        {[
-                            { icon: <Search className="w-8 h-8 text-blue-400" />, title: "Smart Discovery", desc: "Our algorithm matches you with jobs that fit your exact skill set." },
-                            { icon: <UploadCloud className="w-8 h-8 text-blue-400" />, title: "Easy Apply", desc: "Upload your resume once and apply to multiple companies in one click." },
-                            { icon: <Briefcase className="w-8 h-8 text-blue-400" />, title: "Top Companies", desc: "Get access to exclusive listings from Fortune 500 tech giants." },
-                        ].map((feature, i) => (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        className="text-center mb-16"
+                    >
+                        <h2 className="text-3xl md:text-4xl font-bold mb-4">Why Choose <span className="gradient-text">HireNest?</span></h2>
+                        <p className="text-slate-500 max-w-xl mx-auto">Everything you need to accelerate your career or hiring pipeline — in one platform.</p>
+                    </motion.div>
+
+                    <div className="grid md:grid-cols-3 gap-6">
+                        {features.map((f, i) => (
                             <motion.div
                                 key={i}
-                                whileHover={{ y: -5 }}
-                                className="bg-slate-800 p-8 rounded-2xl border border-slate-700/50"
+                                initial={{ opacity: 0, y: 24 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                transition={{ delay: i * 0.1, duration: 0.5 }}
+                                whileHover={{ y: -4 }}
+                                className="glass glass-hover rounded-2xl p-8"
                             >
-                                <div className="bg-slate-900 w-14 h-14 rounded-lg flex items-center justify-center mb-6">
-                                    {feature.icon}
+                                <div className="w-14 h-14 rounded-xl flex items-center justify-center mb-6" style={{ background: f.glow, border: '1px solid rgba(255,255,255,0.08)' }}>
+                                    {f.icon}
                                 </div>
-                                <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
-                                <p className="text-slate-400 leading-relaxed">{feature.desc}</p>
+                                <h3 className="text-xl font-bold mb-3 text-white">{f.title}</h3>
+                                <p className="text-slate-500 leading-relaxed text-sm">{f.desc}</p>
                             </motion.div>
                         ))}
                     </div>
                 </div>
             </section>
 
-            {/* --- LIVE JOB BOARD --- */}
-            <section id="jobs" className="py-24 bg-slate-50 text-slate-900">
+            {/* ── JOB BOARD ── */}
+            <section id="jobs" className="py-24" style={{ background: 'rgba(255,255,255,0.015)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                 <div className="max-w-7xl mx-auto px-4">
-                    <div className="flex justify-between items-end mb-12">
+                    <div className="flex justify-between items-end mb-10">
                         <div>
-                            <h2 className="text-3xl font-bold text-slate-900">Latest Openings</h2>
-                            <p className="text-slate-500 mt-2">Explore the newest roles posted by our partners.</p>
+                            <h2 className="text-3xl font-bold text-white">Latest Openings</h2>
+                            <p className="text-slate-500 mt-1 text-sm">{totalJobs} positions available right now</p>
                         </div>
-                        {user && user.isRecruiter && (
-                            <Link to="/post-job" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
-                                + Post New Job
+                        {user?.isRecruiter && (
+                            <Link to="/post-job" className="btn-primary btn-shimmer text-sm px-5 py-2.5 flex items-center gap-2">
+                                <span className="text-base">+</span> Post New Job
                             </Link>
                         )}
                     </div>
 
+                    {/* Filters */}
+                    <div className="grid md:grid-cols-3 gap-3 mb-8">
+                        <div className="relative">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600 pointer-events-none" />
+                            <input
+                                className="neon-input pl-10 text-sm"
+                                placeholder="Search job title..."
+                                value={searchQ}
+                                onChange={e => setSearchQ(e.target.value)}
+                            />
+                        </div>
+                        <div className="relative">
+                            <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600 pointer-events-none" />
+                            <input
+                                className="neon-input pl-10 text-sm"
+                                placeholder="Filter by location..."
+                                value={filterLocation}
+                                onChange={e => setFilterLocation(e.target.value)}
+                            />
+                        </div>
+                        <div className="relative">
+                            <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600 pointer-events-none" />
+                            <input
+                                className="neon-input pl-10 text-sm"
+                                placeholder="Filter by company..."
+                                value={filterCompany}
+                                onChange={e => setFilterCompany(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Alerts */}
                     {fetchError && (
-                        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2 text-red-700">
+                        <div className="mb-4 flex items-center gap-2 px-4 py-3 rounded-lg text-rose-400 text-sm" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
                             <AlertCircle className="w-4 h-4" /> {fetchError}
                         </div>
                     )}
                     {applySuccess && (
-                        <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-2 text-green-700">
+                        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+                            className="mb-4 flex items-center gap-2 px-4 py-3 rounded-lg text-emerald-400 text-sm"
+                            style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
                             <CheckCircle className="w-4 h-4" /> {applySuccess}
-                        </div>
+                        </motion.div>
                     )}
                     {applyError && (
-                        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2 text-red-700">
+                        <div className="mb-4 flex items-center gap-2 px-4 py-3 rounded-lg text-rose-400 text-sm" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
                             <AlertCircle className="w-4 h-4" /> {applyError}
                         </div>
                     )}
 
-                    <div className="grid gap-6">
-                        {jobs.length === 0 && !fetchError ? (
-                            <div className="text-center py-20 bg-white rounded-xl shadow-sm">
-                                <p className="text-slate-500 text-lg">No jobs available right now. Check back later!</p>
-                            </div>
-                        ) : (
-                            jobs.map((job) => (
+                    {/* Job Cards */}
+                    {jobs.length === 0 && !fetchError ? (
+                        <div className="text-center py-24 glass rounded-2xl">
+                            <Briefcase className="w-12 h-12 text-slate-700 mx-auto mb-4" />
+                            <p className="text-slate-500">No jobs match your search. Try different filters.</p>
+                        </div>
+                    ) : (
+                        <motion.div
+                            variants={containerVariants}
+                            initial="hidden"
+                            animate="visible"
+                            className="grid gap-4"
+                        >
+                            {jobs.map(job => (
                                 <motion.div
                                     key={job.id}
-                                    initial={{ opacity: 0 }}
-                                    whileInView={{ opacity: 1 }}
-                                    viewport={{ once: true }}
-                                    className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all group"
+                                    variants={itemVariants}
+                                    whileHover={{ y: -2 }}
+                                    className="glass glass-hover rounded-xl p-6 group"
                                 >
                                     <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <h3 className="text-xl font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-3 mb-1 flex-wrap">
+                                                <Link
+                                                    to={`/jobs/${job.id}`}
+                                                    className="text-lg font-bold text-white group-hover:text-cyan-400 transition-colors duration-200"
+                                                >
                                                     {job.title}
-                                                </h3>
-                                                <span className="bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded font-medium">New</span>
+                                                </Link>
+                                                <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: 'rgba(6,182,212,0.12)', color: '#22d3ee', border: '1px solid rgba(6,182,212,0.25)' }}>
+                                                    New
+                                                </span>
                                             </div>
-                                            <p className="text-slate-600 font-medium mb-1">{job.company} • {job.location}</p>
-                                            <p className="text-slate-500 text-sm mt-3 line-clamp-2">{job.description}</p>
+                                            <p className="text-slate-400 text-sm mb-2 flex items-center gap-1.5">
+                                                <Building2 className="w-3.5 h-3.5" /> {job.company}
+                                                <span className="text-slate-700">·</span>
+                                                <MapPin className="w-3.5 h-3.5" /> {job.location}
+                                            </p>
+                                            {job.recruiter?.profile?.full_name && (
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <div className="w-5 h-5 rounded-full overflow-hidden flex-shrink-0 bg-slate-800">
+                                                        {avatarUrl(job)
+                                                            ? <img src={avatarUrl(job)} alt="" className="w-full h-full object-cover" />
+                                                            : <div className="w-full h-full bg-slate-700" />
+                                                        }
+                                                    </div>
+                                                    <span className="text-slate-600 text-xs">{job.recruiter.profile.full_name}</span>
+                                                </div>
+                                            )}
+                                            <p className="text-slate-600 text-sm line-clamp-2">{job.description}</p>
                                         </div>
 
-                                        <div className="min-w-[200px] flex flex-col items-end gap-3">
-                                            {user && user.isRecruiter ? (
-                                                <Link
-                                                    to={`/applications/${job.id}`}
-                                                    className="w-full text-center bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-200 transition"
-                                                >
+                                        <div className="min-w-[200px] flex flex-col items-end gap-2">
+                                            {user && !user.isRecruiter && (
+                                                <button onClick={() => toggleSave(job.id)} className="transition-colors duration-200 mb-1">
+                                                    {savedJobIds.has(job.id)
+                                                        ? <BookmarkCheck className="w-5 h-5 text-cyan-400" />
+                                                        : <Bookmark className="w-5 h-5 text-slate-600 hover:text-cyan-400" />
+                                                    }
+                                                </button>
+                                            )}
+
+                                            {user?.isRecruiter ? (
+                                                <Link to={`/applications/${job.id}`} className="w-full text-center py-2 px-4 rounded-lg text-sm font-semibold transition-all duration-200"
+                                                    style={{ background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.25)', color: '#22d3ee' }}>
                                                     View Applicants
                                                 </Link>
                                             ) : user ? (
                                                 <div className="w-full">
-                                                    {!activeJobId || activeJobId !== job.id ? (
+                                                    {appliedJobIds.has(job.id) ? (
+                                                        <div className="w-full text-center py-2 px-4 rounded-lg text-sm font-medium text-slate-600"
+                                                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                                            Applied
+                                                        </div>
+                                                    ) : activeJobId !== job.id ? (
                                                         <button
                                                             onClick={() => { setActiveJobId(job.id); setApplyError(''); }}
-                                                            className="w-full bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 transition"
+                                                            className="w-full btn-primary btn-shimmer py-2 text-sm"
                                                         >
                                                             Apply Now
                                                         </button>
                                                     ) : (
-                                                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 animate-in fade-in zoom-in duration-200">
+                                                        <motion.div
+                                                            initial={{ opacity: 0, y: -8 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            className="rounded-xl p-3"
+                                                            style={{ background: 'rgba(6,182,212,0.05)', border: '1px solid rgba(6,182,212,0.18)' }}
+                                                        >
                                                             <input
                                                                 type="file"
                                                                 accept="application/pdf"
-                                                                className="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-blue-100 file:text-blue-700 mb-2"
+                                                                className="block w-full text-xs text-slate-500 mb-2 file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold cursor-pointer"
+                                                                style={{ '--file-bg': 'rgba(6,182,212,0.15)' }}
                                                                 onChange={handleFileChange}
                                                             />
                                                             <button
                                                                 onClick={() => handleApply(job.id)}
-                                                                className="w-full bg-green-600 text-white py-1.5 rounded text-xs font-medium hover:bg-green-700"
+                                                                className="w-full py-1.5 rounded-lg text-xs font-semibold text-emerald-400 transition-all duration-200 mb-1"
+                                                                style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.28)' }}
                                                             >
                                                                 Confirm Upload
                                                             </button>
                                                             <button
                                                                 onClick={() => { setActiveJobId(null); setApplyError(''); }}
-                                                                className="w-full text-slate-400 text-xs mt-1 hover:text-slate-600"
+                                                                className="w-full text-slate-600 text-xs hover:text-slate-400 transition-colors"
                                                             >
                                                                 Cancel
                                                             </button>
-                                                        </div>
+                                                        </motion.div>
                                                     )}
                                                 </div>
                                             ) : (
-                                                <Link to="/login" className="text-blue-600 text-sm font-medium hover:underline">
-                                                    Login to Apply
+                                                <Link to="/login" className="text-cyan-400 text-sm font-medium hover:text-cyan-300 transition-colors">
+                                                    Login to Apply →
                                                 </Link>
                                             )}
+                                            <Link to={`/jobs/${job.id}`} className="text-slate-600 text-xs hover:text-cyan-400 transition-colors">
+                                                View details →
+                                            </Link>
                                         </div>
                                     </div>
                                 </motion.div>
-                            ))
-                        )}
-                    </div>
+                            ))}
+                        </motion.div>
+                    )}
+
+                    {/* Pagination */}
+                    {totalJobs > JOBS_PER_PAGE && (
+                        <div className="flex items-center justify-between mt-8 pt-6" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                            <p className="text-sm text-slate-600">
+                                {Math.min((page - 1) * JOBS_PER_PAGE + 1, totalJobs)}–{Math.min(page * JOBS_PER_PAGE, totalJobs)} of {totalJobs} jobs
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setPage(p => p - 1)}
+                                    disabled={page === 1}
+                                    className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm text-slate-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 hover:text-cyan-400"
+                                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                                >
+                                    <ChevronLeft className="w-4 h-4" /> Prev
+                                </button>
+                                <span className="text-sm text-slate-500 px-3">
+                                    {page} / {totalPages}
+                                </span>
+                                <button
+                                    onClick={() => setPage(p => p + 1)}
+                                    disabled={page >= totalPages}
+                                    className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm text-slate-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 hover:text-cyan-400"
+                                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                                >
+                                    Next <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </section>
 
-            {/* --- TESTIMONIALS --- */}
-            <section className="py-24 bg-slate-900 border-t border-slate-800">
-                <div className="max-w-7xl mx-auto px-4 text-center">
-                    <h2 className="text-3xl font-bold mb-12">Loved by Professionals</h2>
-                    <div className="grid md:grid-cols-3 gap-8">
-                        {[
-                            { name: "Sarah J.", role: "Software Engineer", quote: "HireNest made it incredibly easy to find a remote role that fits my lifestyle. The process was seamless." },
-                            { name: "David K.", role: "Product Manager", quote: "As a recruiter, the quality of candidates I find here is unmatched. The dashboard is intuitive and fast." },
-                            { name: "Elena R.", role: "UX Designer", quote: "I love the minimalist design and how quick it is to apply. No more filling out 10-page forms!" },
-                        ].map((t, i) => (
-                            <div key={i} className="bg-slate-800 p-8 rounded-2xl relative">
-                                <div className="absolute -top-4 left-8 bg-blue-600 p-2 rounded-full">
-                                    <Users className="w-5 h-5 text-white" />
+            {/* ── TESTIMONIALS ── */}
+            <section className="py-28" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                <div className="max-w-7xl mx-auto px-4">
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        className="text-center mb-16"
+                    >
+                        <h2 className="text-3xl md:text-4xl font-bold mb-4">Trusted by <span className="gradient-text">Professionals</span></h2>
+                    </motion.div>
+                    <div className="grid md:grid-cols-3 gap-6">
+                        {testimonials.map((t, i) => (
+                            <motion.div
+                                key={i}
+                                initial={{ opacity: 0, y: 24 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                transition={{ delay: i * 0.12, duration: 0.5 }}
+                                className="glass rounded-2xl p-8 relative overflow-hidden"
+                            >
+                                <div className="absolute top-0 right-0 w-24 h-24 opacity-30" style={{ background: 'radial-gradient(circle, rgba(6,182,212,0.3), transparent)' }} />
+                                <div className="text-4xl text-cyan-400/20 font-serif mb-4 leading-none">"</div>
+                                <p className="text-slate-400 text-sm leading-relaxed mb-6 italic">"{t.quote}"</p>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm" style={{ background: 'rgba(6,182,212,0.15)', color: '#22d3ee', border: '1px solid rgba(6,182,212,0.25)' }}>
+                                        {t.name[0]}
+                                    </div>
+                                    <div>
+                                        <div className="font-semibold text-white text-sm">{t.name}</div>
+                                        <div className="text-cyan-400 text-xs">{t.role}</div>
+                                    </div>
                                 </div>
-                                <p className="text-slate-300 italic mb-6">"{t.quote}"</p>
-                                <div className="text-left">
-                                    <div className="font-bold text-white">{t.name}</div>
-                                    <div className="text-sm text-blue-400">{t.role}</div>
-                                </div>
-                            </div>
+                            </motion.div>
                         ))}
                     </div>
                 </div>
             </section>
 
-            {/* --- FOOTER --- */}
-            <footer className="bg-black py-12 border-t border-slate-800 text-slate-500 text-sm">
-                <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center">
-                    <div className="mb-4 md:mb-0">
-                        <span className="text-2xl font-bold text-white tracking-tight">Hire<span className="text-blue-600">Nest</span></span>
-                        <p className="mt-2">© 2026 HireNest Inc. All rights reserved.</p>
+            {/* ── FOOTER ── */}
+            <footer style={{ background: 'rgba(0,0,0,0.5)', borderTop: '1px solid rgba(255,255,255,0.05)' }} className="py-12">
+                <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div>
+                        <div className="text-2xl font-black tracking-tight text-white mb-1">
+                            Hire<span className="gradient-text">Nest</span>
+                        </div>
+                        <p className="text-slate-600 text-sm">© 2026 HireNest Inc. All rights reserved.</p>
                     </div>
-                    <div className="flex gap-8">
-                        <a href="#" className="hover:text-white transition">Privacy Policy</a>
-                        <a href="#" className="hover:text-white transition">Terms of Service</a>
-                        <a href="#" className="hover:text-white transition">Contact Support</a>
+                    <div className="flex gap-8 text-sm text-slate-600">
+                        <a href="#" className="hover:text-cyan-400 transition-colors duration-200">Privacy Policy</a>
+                        <a href="#" className="hover:text-cyan-400 transition-colors duration-200">Terms of Service</a>
+                        <a href="#" className="hover:text-cyan-400 transition-colors duration-200">Support</a>
                     </div>
                 </div>
             </footer>

@@ -8,7 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from core.database import engine, Base, get_db
 from core.security import get_current_user
-from routers import auth, jobs, applications, profile, messages
+from routers import auth, jobs, applications, profile, messages, notifications, admin, ai, ws
 import models
 
 logging.basicConfig(
@@ -21,7 +21,7 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="HireNest API")
 
-# Security headers on every response
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
@@ -31,9 +31,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response
 
+
 app.add_middleware(SecurityHeadersMiddleware)
 
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:5174,http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -42,7 +43,6 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
 )
 
-# Only serve avatars publicly (profile pictures); resumes require auth (see /files/resume/)
 os.makedirs(os.path.join("uploads", "avatars"), exist_ok=True)
 os.makedirs(os.path.join("uploads", "resumes"), exist_ok=True)
 app.mount("/static/avatars", StaticFiles(directory=os.path.join("uploads", "avatars")), name="avatars")
@@ -52,6 +52,10 @@ app.include_router(jobs.router)
 app.include_router(applications.router)
 app.include_router(profile.router)
 app.include_router(messages.router)
+app.include_router(notifications.router)
+app.include_router(admin.router)
+app.include_router(ai.router)
+app.include_router(ws.router)
 
 
 @app.get("/health")
@@ -61,7 +65,6 @@ def health_check():
 
 @app.get("/files/resume/{filename}")
 def download_resume(filename: str, current_user: models.User = Depends(get_current_user)):
-    # Prevent path traversal attacks
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
     file_path = os.path.join("uploads", "resumes", filename)

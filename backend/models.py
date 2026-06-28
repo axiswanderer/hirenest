@@ -3,18 +3,23 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from core.database import Base
 
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     is_recruiter = Column(Boolean, default=False)
+    is_admin = Column(Boolean, default=False)
 
-    profile = relationship("Profile", back_populates="user", uselist=False)
-    applications = relationship("Application", back_populates="applicant")
-    jobs = relationship("Job", back_populates="recruiter")
+    profile = relationship("Profile", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    applications = relationship("Application", back_populates="applicant", cascade="all, delete-orphan")
+    jobs = relationship("Job", back_populates="recruiter", cascade="all, delete-orphan")
+    saved_jobs = relationship("SavedJob", back_populates="user", cascade="all, delete-orphan")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     sent_messages = relationship("Message", foreign_keys="[Message.sender_id]", back_populates="sender")
     received_messages = relationship("Message", foreign_keys="[Message.receiver_id]", back_populates="receiver")
+
 
 class Profile(Base):
     __tablename__ = "profiles"
@@ -27,6 +32,7 @@ class Profile(Base):
     avatar_url = Column(String, nullable=True)
     user = relationship("User", back_populates="profile")
 
+
 class Job(Base):
     __tablename__ = "jobs"
     id = Column(Integer, primary_key=True, index=True)
@@ -37,7 +43,9 @@ class Job(Base):
     recruiter_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     recruiter = relationship("User", back_populates="jobs")
-    applications = relationship("Application", back_populates="job")
+    applications = relationship("Application", back_populates="job", cascade="all, delete-orphan")
+    saves = relationship("SavedJob", back_populates="job", cascade="all, delete-orphan")
+
 
 class Application(Base):
     __tablename__ = "applications"
@@ -53,6 +61,33 @@ class Application(Base):
     __table_args__ = (
         UniqueConstraint("job_id", "applicant_id", name="uq_application_job_applicant"),
     )
+
+
+class SavedJob(Base):
+    __tablename__ = "saved_jobs"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    job_id = Column(Integer, ForeignKey("jobs.id"))
+    saved_at = Column(DateTime(timezone=True), server_default=func.now())
+    user = relationship("User", back_populates="saved_jobs")
+    job = relationship("Job", back_populates="saves")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "job_id", name="uq_saved_job_user"),
+    )
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    type = Column(String(50))
+    content = Column(Text)
+    is_read = Column(Boolean, default=False)
+    related_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    user = relationship("User", back_populates="notifications")
+
 
 class Message(Base):
     __tablename__ = "messages"

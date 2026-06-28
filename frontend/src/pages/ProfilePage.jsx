@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import api from '../api/axios';
-import { User, Phone, Camera, AlertCircle, CheckCircle } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { User, Phone, Camera, AlertCircle, CheckCircle, Globe, FileText } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const MAX_AVATAR_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
 
 const ProfilePage = () => {
     const [profile, setProfile] = useState({ full_name: '', phone: '', portfolio: '', bio: '', avatar_url: '' });
@@ -27,16 +28,8 @@ const ProfilePage = () => {
         const selected = e.target.files[0];
         if (!selected) return;
         const allowed = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!allowed.includes(selected.type)) {
-            setError('Only JPEG, PNG, or WebP images are accepted.');
-            e.target.value = '';
-            return;
-        }
-        if (selected.size > MAX_AVATAR_SIZE) {
-            setError('Image too large. Maximum size is 5 MB.');
-            e.target.value = '';
-            return;
-        }
+        if (!allowed.includes(selected.type)) { setError('Only JPEG, PNG, or WebP images are accepted.'); e.target.value = ''; return; }
+        if (selected.size > MAX_AVATAR_SIZE) { setError('Image too large. Maximum size is 5 MB.'); e.target.value = ''; return; }
         setFile(selected);
         setPreview(URL.createObjectURL(selected));
     };
@@ -51,102 +44,146 @@ const ProfilePage = () => {
         formData.append('portfolio', profile.portfolio || '');
         formData.append('bio', profile.bio || '');
         if (file) formData.append('file', file);
-
         try {
             await api.put('/profile/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
             setSuccess('Profile updated successfully!');
             setFile(null);
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
-            const detail = err.response?.data?.detail;
-            setError(detail || 'Update failed. Please try again.');
+            setError(err.response?.data?.detail || 'Update failed. Please try again.');
         }
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 p-8 flex justify-center">
-            <div className="bg-white w-full max-w-2xl rounded-2xl shadow-sm border border-slate-200 p-8">
-                <h1 className="text-2xl font-bold text-slate-900 mb-6">My Profile</h1>
+        <div className="min-h-screen grid-bg py-12 px-4 flex justify-center relative overflow-hidden">
+            {/* Ambient orbs */}
+            <div className="absolute top-10 right-10 w-80 h-80 orb-cyan animate-glow-pulse pointer-events-none" style={{ opacity: 0.3 }} />
+            <div className="absolute bottom-10 left-10 w-72 h-72 orb-violet animate-orb-2 pointer-events-none" style={{ opacity: 0.25 }} />
 
-                {error && (
-                    <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700 text-sm">
-                        <AlertCircle className="w-4 h-4" /> {error}
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45 }}
+                className="w-full max-w-2xl relative z-10"
+            >
+                <div className="glass rounded-2xl p-8">
+                    <div className="mb-8">
+                        <h1 className="text-2xl font-bold text-white mb-1">
+                            My <span className="gradient-text">Profile</span>
+                        </h1>
+                        <p className="text-slate-500 text-sm">Update your personal information and avatar.</p>
                     </div>
-                )}
-                {success && (
-                    <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-green-700 text-sm">
-                        <CheckCircle className="w-4 h-4" /> {success}
-                    </div>
-                )}
 
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    {/* Avatar Upload */}
-                    <div className="flex items-center gap-6">
-                        <div className="relative w-24 h-24 rounded-full bg-slate-100 overflow-hidden border border-slate-200 flex items-center justify-center">
-                            {preview ? (
-                                <img src={preview} alt="Profile" className="w-full h-full object-cover" />
-                            ) : (
-                                <User className="w-12 h-12 text-slate-400" />
-                            )}
+                    {/* Alerts */}
+                    {error && (
+                        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+                            className="mb-5 flex items-center gap-2 px-4 py-3 rounded-lg text-rose-400 text-sm"
+                            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.22)' }}>
+                            <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
+                        </motion.div>
+                    )}
+                    {success && (
+                        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+                            className="mb-5 flex items-center gap-2 px-4 py-3 rounded-lg text-emerald-400 text-sm"
+                            style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.22)' }}>
+                            <CheckCircle className="w-4 h-4 flex-shrink-0" /> {success}
+                        </motion.div>
+                    )}
+
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                        {/* Avatar Upload */}
+                        <div className="flex items-center gap-5">
+                            <div className="relative w-20 h-20 rounded-2xl overflow-hidden flex items-center justify-center flex-shrink-0"
+                                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(6,182,212,0.2)' }}>
+                                {preview
+                                    ? <img src={preview} alt="Profile" className="w-full h-full object-cover" />
+                                    : <User className="w-9 h-9 text-slate-700" />
+                                }
+                            </div>
+                            <div>
+                                <label className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-200 text-cyan-400"
+                                    style={{ background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.22)' }}>
+                                    <Camera className="w-4 h-4" /> Change Photo
+                                    <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleFileChange} />
+                                </label>
+                                <p className="text-xs text-slate-600 mt-1.5">JPEG, PNG or WebP · max 5 MB</p>
+                            </div>
                         </div>
+
+                        {/* Divider */}
+                        <div className="h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+
+                        {/* Name + Phone */}
+                        <div className="grid md:grid-cols-2 gap-5">
+                            <div>
+                                <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Full Name</label>
+                                <div className="relative">
+                                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-700 pointer-events-none" />
+                                    <input
+                                        className="neon-input pl-10"
+                                        maxLength={200}
+                                        placeholder="Your full name"
+                                        value={profile.full_name || ''}
+                                        onChange={e => setProfile({ ...profile, full_name: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Phone</label>
+                                <div className="relative">
+                                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-700 pointer-events-none" />
+                                    <input
+                                        className="neon-input pl-10"
+                                        maxLength={20}
+                                        placeholder="+1 (555) 000-0000"
+                                        value={profile.phone || ''}
+                                        onChange={e => setProfile({ ...profile, phone: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Portfolio */}
                         <div>
-                            <label className="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer hover:bg-slate-50 transition flex items-center gap-2">
-                                <Camera className="w-4 h-4" /> Change Photo
-                                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleFileChange} />
-                            </label>
-                            <p className="text-xs text-slate-400 mt-1">JPEG, PNG or WebP · max 5 MB</p>
+                            <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Portfolio Link</label>
+                            <div className="relative">
+                                <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-700 pointer-events-none" />
+                                <input
+                                    type="url"
+                                    className="neon-input pl-10"
+                                    maxLength={500}
+                                    placeholder="https://yourportfolio.com"
+                                    value={profile.portfolio || ''}
+                                    onChange={e => setProfile({ ...profile, portfolio: e.target.value })}
+                                />
+                            </div>
                         </div>
-                    </div>
 
-                    <div className="grid md:grid-cols-2 gap-6">
+                        {/* Bio */}
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
-                            <input
-                                className="w-full border border-slate-300 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                maxLength={200}
-                                value={profile.full_name || ''}
-                                onChange={e => setProfile({...profile, full_name: e.target.value})}
-                            />
+                            <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">About / Bio</label>
+                            <div className="relative">
+                                <FileText className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-700 pointer-events-none" />
+                                <textarea
+                                    rows={4}
+                                    maxLength={2000}
+                                    className="neon-input pl-10 resize-none"
+                                    placeholder="A brief description about yourself..."
+                                    value={profile.bio || ''}
+                                    onChange={e => setProfile({ ...profile, bio: e.target.value })}
+                                />
+                            </div>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Phone</label>
-                            <input
-                                className="w-full border border-slate-300 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                maxLength={20}
-                                value={profile.phone || ''}
-                                onChange={e => setProfile({...profile, phone: e.target.value})}
-                            />
-                        </div>
-                    </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Portfolio Link</label>
-                        <input
-                            type="url"
-                            className="w-full border border-slate-300 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            maxLength={500}
-                            placeholder="https://yourportfolio.com"
-                            value={profile.portfolio || ''}
-                            onChange={e => setProfile({...profile, portfolio: e.target.value})}
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">About / Bio</label>
-                        <textarea
-                            rows="4"
-                            maxLength={2000}
-                            className="w-full border border-slate-300 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            value={profile.bio || ''}
-                            onChange={e => setProfile({...profile, bio: e.target.value})}
-                        />
-                    </div>
-
-                    <button className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 transition w-full">
-                        Save Changes
-                    </button>
-                </form>
-            </div>
+                        <button
+                            type="submit"
+                            className="w-full btn-primary btn-shimmer flex justify-center items-center gap-2 py-3 text-sm font-semibold"
+                        >
+                            Save Changes
+                        </button>
+                    </form>
+                </div>
+            </motion.div>
         </div>
     );
 };
