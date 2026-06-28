@@ -2,14 +2,19 @@ import { useEffect, useState } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion'; 
-import { Briefcase, UploadCloud, Users, CheckCircle, Search, ArrowRight } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Briefcase, UploadCloud, Users, CheckCircle, Search, ArrowRight, AlertCircle } from 'lucide-react';
+
+const MAX_RESUME_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const JobBoard = () => {
     const { user } = useAuth();
     const [jobs, setJobs] = useState([]);
     const [file, setFile] = useState(null);
     const [activeJobId, setActiveJobId] = useState(null);
+    const [applyError, setApplyError] = useState('');
+    const [applySuccess, setApplySuccess] = useState('');
+    const [fetchError, setFetchError] = useState('');
 
     useEffect(() => {
         const fetchJobs = async () => {
@@ -17,32 +22,54 @@ const JobBoard = () => {
                 const res = await api.get('/jobs/');
                 setJobs(res.data);
             } catch (err) {
-                console.error("Failed to fetch jobs");
+                setFetchError('Failed to load jobs. Please refresh the page.');
             }
         };
         fetchJobs();
     }, []);
 
+    const handleFileChange = (e) => {
+        setApplyError('');
+        const selected = e.target.files[0];
+        if (!selected) return;
+        if (selected.type !== 'application/pdf') {
+            setApplyError('Only PDF files are accepted.');
+            e.target.value = '';
+            return;
+        }
+        if (selected.size > MAX_RESUME_SIZE) {
+            setApplyError('File too large. Maximum size is 10 MB.');
+            e.target.value = '';
+            return;
+        }
+        setFile(selected);
+    };
+
     const handleApply = async (jobId) => {
-        if (!file) return alert("Please select a PDF file first.");
+        if (!file) {
+            setApplyError('Please select a PDF file first.');
+            return;
+        }
+        setApplyError('');
         const formData = new FormData();
         formData.append('job_id', jobId);
-        formData.append('applicant_name', "Applicant"); 
+        formData.append('applicant_name', 'Applicant');
         formData.append('file', file);
 
         try {
             await api.post('/applications/', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
-            alert("Application Sent Successfully!");
+            setApplySuccess('Application submitted!');
             setFile(null);
             setActiveJobId(null);
+            setTimeout(() => setApplySuccess(''), 3000);
         } catch (err) {
-            alert("Application Failed.");
+            const detail = err.response?.data?.detail;
+            setApplyError(detail || 'Application failed. Please try again.');
         }
     };
 
-    // Animation Variants
     const fadeInUp = {
         hidden: { opacity: 0, y: 30 },
         visible: { opacity: 1, y: 0, transition: { duration: 0.6 } }
@@ -50,16 +77,12 @@ const JobBoard = () => {
 
     return (
         <div className="bg-slate-900 min-h-screen font-sans text-white">
-            
+
             {/* --- HERO SECTION --- */}
             <section className="relative pt-20 pb-32 overflow-hidden">
                 <div className="absolute inset-0 bg-blue-600/10 radial-gradient"></div>
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-                    <motion.div 
-                        initial="hidden" 
-                        animate="visible" 
-                        variants={fadeInUp}
-                    >
+                    <motion.div initial="hidden" animate="visible" variants={fadeInUp}>
                         <span className="inline-block py-1 px-3 rounded-full bg-blue-900/50 border border-blue-500/30 text-blue-300 text-sm font-semibold mb-6">
                             🚀 The Future of Hiring is Here
                         </span>
@@ -70,7 +93,7 @@ const JobBoard = () => {
                             </span>
                         </h1>
                         <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-10">
-                            HireNest connects top-tier talent with world-class companies. 
+                            HireNest connects top-tier talent with world-class companies.
                             Seamless, fast, and built for the modern workforce.
                         </p>
                         <div className="flex justify-center gap-4">
@@ -117,8 +140,8 @@ const JobBoard = () => {
                             { icon: <UploadCloud className="w-8 h-8 text-blue-400" />, title: "Easy Apply", desc: "Upload your resume once and apply to multiple companies in one click." },
                             { icon: <Briefcase className="w-8 h-8 text-blue-400" />, title: "Top Companies", desc: "Get access to exclusive listings from Fortune 500 tech giants." },
                         ].map((feature, i) => (
-                            <motion.div 
-                                key={i} 
+                            <motion.div
+                                key={i}
                                 whileHover={{ y: -5 }}
                                 className="bg-slate-800 p-8 rounded-2xl border border-slate-700/50"
                             >
@@ -133,7 +156,7 @@ const JobBoard = () => {
                 </div>
             </section>
 
-            {/* --- LIVE JOB BOARD (Functional Part) --- */}
+            {/* --- LIVE JOB BOARD --- */}
             <section id="jobs" className="py-24 bg-slate-50 text-slate-900">
                 <div className="max-w-7xl mx-auto px-4">
                     <div className="flex justify-between items-end mb-12">
@@ -142,21 +165,37 @@ const JobBoard = () => {
                             <p className="text-slate-500 mt-2">Explore the newest roles posted by our partners.</p>
                         </div>
                         {user && user.isRecruiter && (
-                             <Link to="/post-job" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
+                            <Link to="/post-job" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
                                 + Post New Job
-                             </Link>
+                            </Link>
                         )}
                     </div>
 
+                    {fetchError && (
+                        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2 text-red-700">
+                            <AlertCircle className="w-4 h-4" /> {fetchError}
+                        </div>
+                    )}
+                    {applySuccess && (
+                        <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-2 text-green-700">
+                            <CheckCircle className="w-4 h-4" /> {applySuccess}
+                        </div>
+                    )}
+                    {applyError && (
+                        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2 text-red-700">
+                            <AlertCircle className="w-4 h-4" /> {applyError}
+                        </div>
+                    )}
+
                     <div className="grid gap-6">
-                        {jobs.length === 0 ? (
+                        {jobs.length === 0 && !fetchError ? (
                             <div className="text-center py-20 bg-white rounded-xl shadow-sm">
                                 <p className="text-slate-500 text-lg">No jobs available right now. Check back later!</p>
                             </div>
                         ) : (
                             jobs.map((job) => (
-                                <motion.div 
-                                    key={job.id} 
+                                <motion.div
+                                    key={job.id}
                                     initial={{ opacity: 0 }}
                                     whileInView={{ opacity: 1 }}
                                     viewport={{ once: true }}
@@ -175,40 +214,38 @@ const JobBoard = () => {
                                         </div>
 
                                         <div className="min-w-[200px] flex flex-col items-end gap-3">
-                                            {/* RECRUITER ACTION */}
                                             {user && user.isRecruiter ? (
-                                                <Link 
+                                                <Link
                                                     to={`/applications/${job.id}`}
                                                     className="w-full text-center bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-200 transition"
                                                 >
                                                     View Applicants
                                                 </Link>
                                             ) : user ? (
-                                                // APPLICANT ACTION
                                                 <div className="w-full">
                                                     {!activeJobId || activeJobId !== job.id ? (
-                                                        <button 
-                                                            onClick={() => setActiveJobId(job.id)}
+                                                        <button
+                                                            onClick={() => { setActiveJobId(job.id); setApplyError(''); }}
                                                             className="w-full bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 transition"
                                                         >
                                                             Apply Now
                                                         </button>
                                                     ) : (
                                                         <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 animate-in fade-in zoom-in duration-200">
-                                                            <input 
-                                                                type="file" 
+                                                            <input
+                                                                type="file"
                                                                 accept="application/pdf"
                                                                 className="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-blue-100 file:text-blue-700 mb-2"
-                                                                onChange={(e) => setFile(e.target.files[0])}
+                                                                onChange={handleFileChange}
                                                             />
-                                                            <button 
-                                                                onClick={() => handleApply(job.id)} 
+                                                            <button
+                                                                onClick={() => handleApply(job.id)}
                                                                 className="w-full bg-green-600 text-white py-1.5 rounded text-xs font-medium hover:bg-green-700"
                                                             >
                                                                 Confirm Upload
                                                             </button>
-                                                            <button 
-                                                                onClick={() => setActiveJobId(null)}
+                                                            <button
+                                                                onClick={() => { setActiveJobId(null); setApplyError(''); }}
                                                                 className="w-full text-slate-400 text-xs mt-1 hover:text-slate-600"
                                                             >
                                                                 Cancel

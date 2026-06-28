@@ -1,47 +1,65 @@
 import { useEffect, useState } from 'react';
 import api from '../api/axios';
-import { User, Mail, Phone, Globe, FileText, Camera } from 'lucide-react';
+import { User, Phone, Camera, AlertCircle, CheckCircle } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const MAX_AVATAR_SIZE = 5 * 1024 * 1024; // 5 MB
 
 const ProfilePage = () => {
-    const [profile, setProfile] = useState({
-        full_name: '', phone: '', portfolio: '', bio: '', avatar_url: ''
-    });
+    const [profile, setProfile] = useState({ full_name: '', phone: '', portfolio: '', bio: '', avatar_url: '' });
     const [file, setFile] = useState(null);
     const [preview, setPreview] = useState(null);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
 
     useEffect(() => {
         api.get('/profile/').then(res => {
             setProfile(res.data);
             if (res.data.avatar_url) {
-                // Convert backend path to frontend URL
                 const filename = res.data.avatar_url.split(/[\\/]/).pop();
-                setPreview(`http://localhost:8000/static/${filename}`);
+                setPreview(`${API_URL}/static/avatars/${filename}`);
             }
-        });
+        }).catch(() => setError('Failed to load profile.'));
     }, []);
 
     const handleFileChange = (e) => {
+        setError('');
         const selected = e.target.files[0];
+        if (!selected) return;
+        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowed.includes(selected.type)) {
+            setError('Only JPEG, PNG, or WebP images are accepted.');
+            e.target.value = '';
+            return;
+        }
+        if (selected.size > MAX_AVATAR_SIZE) {
+            setError('Image too large. Maximum size is 5 MB.');
+            e.target.value = '';
+            return;
+        }
         setFile(selected);
         setPreview(URL.createObjectURL(selected));
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setError('');
+        setSuccess('');
         const formData = new FormData();
-        formData.append('full_name', profile.full_name || "");
-        formData.append('phone', profile.phone || "");
-        formData.append('portfolio', profile.portfolio || "");
-        formData.append('bio', profile.bio || "");
+        formData.append('full_name', profile.full_name || '');
+        formData.append('phone', profile.phone || '');
+        formData.append('portfolio', profile.portfolio || '');
+        formData.append('bio', profile.bio || '');
         if (file) formData.append('file', file);
 
         try {
-            await api.put('/profile/', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-            alert("Profile Updated Successfully!");
+            await api.put('/profile/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+            setSuccess('Profile updated successfully!');
+            setFile(null);
+            setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
-            alert("Update Failed");
+            const detail = err.response?.data?.detail;
+            setError(detail || 'Update failed. Please try again.');
         }
     };
 
@@ -49,39 +67,53 @@ const ProfilePage = () => {
         <div className="min-h-screen bg-slate-50 p-8 flex justify-center">
             <div className="bg-white w-full max-w-2xl rounded-2xl shadow-sm border border-slate-200 p-8">
                 <h1 className="text-2xl font-bold text-slate-900 mb-6">My Profile</h1>
-                
+
+                {error && (
+                    <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700 text-sm">
+                        <AlertCircle className="w-4 h-4" /> {error}
+                    </div>
+                )}
+                {success && (
+                    <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-green-700 text-sm">
+                        <CheckCircle className="w-4 h-4" /> {success}
+                    </div>
+                )}
+
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {/* Avatar Upload */}
                     <div className="flex items-center gap-6">
-                        <div className="relative w-24 h-24 rounded-full bg-slate-100 overflow-hidden border border-slate-200">
+                        <div className="relative w-24 h-24 rounded-full bg-slate-100 overflow-hidden border border-slate-200 flex items-center justify-center">
                             {preview ? (
                                 <img src={preview} alt="Profile" className="w-full h-full object-cover" />
                             ) : (
-                                <User className="w-12 h-12 text-slate-400 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                                <User className="w-12 h-12 text-slate-400" />
                             )}
                         </div>
                         <div>
                             <label className="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer hover:bg-slate-50 transition flex items-center gap-2">
                                 <Camera className="w-4 h-4" /> Change Photo
-                                <input type="file" className="hidden" onChange={handleFileChange} />
+                                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleFileChange} />
                             </label>
+                            <p className="text-xs text-slate-400 mt-1">JPEG, PNG or WebP · max 5 MB</p>
                         </div>
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
-                            <input 
-                                className="w-full border p-2 rounded-lg"
-                                value={profile.full_name || ''} 
+                            <input
+                                className="w-full border border-slate-300 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                maxLength={200}
+                                value={profile.full_name || ''}
                                 onChange={e => setProfile({...profile, full_name: e.target.value})}
                             />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">Phone</label>
-                            <input 
-                                className="w-full border p-2 rounded-lg"
-                                value={profile.phone || ''} 
+                            <input
+                                className="w-full border border-slate-300 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                maxLength={20}
+                                value={profile.phone || ''}
                                 onChange={e => setProfile({...profile, phone: e.target.value})}
                             />
                         </div>
@@ -89,19 +121,23 @@ const ProfilePage = () => {
 
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">Portfolio Link</label>
-                        <input 
-                            className="w-full border p-2 rounded-lg"
-                            value={profile.portfolio || ''} 
+                        <input
+                            type="url"
+                            className="w-full border border-slate-300 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            maxLength={500}
+                            placeholder="https://yourportfolio.com"
+                            value={profile.portfolio || ''}
                             onChange={e => setProfile({...profile, portfolio: e.target.value})}
                         />
                     </div>
 
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">About / Bio</label>
-                        <textarea 
+                        <textarea
                             rows="4"
-                            className="w-full border p-2 rounded-lg"
-                            value={profile.bio || ''} 
+                            maxLength={2000}
+                            className="w-full border border-slate-300 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            value={profile.bio || ''}
                             onChange={e => setProfile({...profile, bio: e.target.value})}
                         />
                     </div>

@@ -7,33 +7,37 @@ import crud, schemas, models
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
+
 # --- 1. GET MY JOBS (Recruiter) ---
-# CRITICAL: This MUST be defined BEFORE generic /{id} endpoints
+# CRITICAL: must be defined BEFORE generic /{id} endpoints
 @router.get("/my-jobs", response_model=List[schemas.JobResponse])
 def get_my_jobs(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(get_current_user),
 ):
     if not current_user.is_recruiter:
         raise HTTPException(status_code=403, detail="Only recruiters can view their jobs")
-    # Filters jobs where recruiter_id matches the logged-in user
     return db.query(models.Job).filter(models.Job.recruiter_id == current_user.id).all()
 
-# --- 2. GET ALL JOBS (Public) ---
+
+# --- 2. GET ALL JOBS (Public) with pagination ---
 @router.get("/", response_model=List[schemas.JobResponse])
-def read_jobs(db: Session = Depends(get_db)):
-    return crud.get_jobs(db)
+def read_jobs(skip: int = 0, limit: int = 20, db: Session = Depends(get_db)):
+    limit = min(limit, 100)  # cap to prevent abuse
+    return crud.get_jobs(db, skip=skip, limit=limit)
+
 
 # --- 3. CREATE JOB (Recruiter) ---
 @router.post("/", response_model=schemas.JobResponse)
 def create_job(
-    job: schemas.JobCreate, 
-    db: Session = Depends(get_db), 
-    current_user: models.User = Depends(get_current_user)
+    job: schemas.JobCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
     if not current_user.is_recruiter:
         raise HTTPException(status_code=403, detail="Only recruiters can post jobs")
     return crud.create_job(db, job, current_user.id)
+
 
 # --- 4. GET JOB BY ID (Public) ---
 @router.get("/{job_id}", response_model=schemas.JobResponse)

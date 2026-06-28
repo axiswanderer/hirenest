@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import api from '../api/axios';
-import { MessageSquare, Send, X, User } from 'lucide-react';
+import { MessageSquare, Send, X, User, AlertCircle } from 'lucide-react';
+
+const MAX_RESUME_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const ApplicantDashboard = () => {
     const [activeTab, setActiveTab] = useState('browse');
@@ -8,46 +10,77 @@ const ApplicantDashboard = () => {
     const [myApplications, setMyApplications] = useState([]);
     const [file, setFile] = useState(null);
     const [applyingJobId, setApplyingJobId] = useState(null);
+    const [applyError, setApplyError] = useState('');
+    const [fetchError, setFetchError] = useState('');
 
-    // --- CHAT STATE ---
-    const [activeChat, setActiveChat] = useState(null); // { recruiterId, jobTitle }
+    const [activeChat, setActiveChat] = useState(null);
     const [messages, setMessages] = useState([]);
-    const [newMessage, setNewMessage] = useState("");
+    const [newMessage, setNewMessage] = useState('');
+    const [chatError, setChatError] = useState('');
 
     useEffect(() => {
-        api.get('/jobs/').then(res => setJobs(res.data));
+        api.get('/jobs/')
+            .then(res => setJobs(res.data))
+            .catch(() => setFetchError('Failed to load jobs.'));
     }, []);
 
     useEffect(() => {
         if (activeTab === 'history') {
-            api.get('/applications/me').then(res => setMyApplications(res.data));
+            api.get('/applications/me')
+                .then(res => setMyApplications(res.data))
+                .catch(() => setFetchError('Failed to load your applications.'));
         }
     }, [activeTab]);
 
-    // Apply Logic
-    const handleApply = async (jobId) => {
-        if (!file) return alert("Upload PDF first");
-        const formData = new FormData();
-        formData.append('job_id', jobId);
-        formData.append('applicant_name', "Me");
-        formData.append('file', file);
-        try {
-            await api.post('/applications/', formData, { headers: { 'Content-Type': 'multipart/form-data' }});
-            alert("Applied!");
-            setApplyingJobId(null);
-        } catch(e) { alert("Error applying"); }
+    const handleFileChange = (e) => {
+        setApplyError('');
+        const selected = e.target.files[0];
+        if (!selected) return;
+        if (selected.type !== 'application/pdf') {
+            setApplyError('Only PDF files are accepted.');
+            e.target.value = '';
+            return;
+        }
+        if (selected.size > MAX_RESUME_SIZE) {
+            setApplyError('File too large. Maximum size is 10 MB.');
+            e.target.value = '';
+            return;
+        }
+        setFile(selected);
     };
 
-    // --- CHAT LOGIC ---
+    const handleApply = async (jobId) => {
+        if (!file) {
+            setApplyError('Upload a PDF first.');
+            return;
+        }
+        setApplyError('');
+        const formData = new FormData();
+        formData.append('job_id', jobId);
+        formData.append('applicant_name', 'Me');
+        formData.append('file', file);
+        try {
+            await api.post('/applications/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+            setApplyingJobId(null);
+            setFile(null);
+        } catch (e) {
+            const detail = e.response?.data?.detail;
+            setApplyError(detail || 'Error applying. Please try again.');
+        }
+    };
+
     const openChat = async (recruiterId, jobTitle) => {
-        if (!recruiterId) return alert("Error: Recruiter not found for this job.");
-        
+        if (!recruiterId) {
+            setChatError('Recruiter not found for this job.');
+            return;
+        }
+        setChatError('');
         setActiveChat({ id: recruiterId, title: jobTitle });
         try {
             const res = await api.get(`/messages/${recruiterId}`);
             setMessages(res.data);
         } catch (err) {
-            console.error("Failed to load chat", err);
+            setChatError('Failed to load chat history.');
         }
     };
 
@@ -56,12 +89,11 @@ const ApplicantDashboard = () => {
         if (!newMessage.trim()) return;
         try {
             await api.post('/messages/', { receiver_id: activeChat.id, content: newMessage });
-            setNewMessage("");
-            // Refresh chat immediately
+            setNewMessage('');
             const res = await api.get(`/messages/${activeChat.id}`);
             setMessages(res.data);
-        } catch (err) { 
-            console.error("Failed to send"); 
+        } catch (err) {
+            setChatError('Failed to send message.');
         }
     };
 
@@ -69,8 +101,13 @@ const ApplicantDashboard = () => {
         <div className="min-h-screen bg-slate-50 p-8 relative">
             <div className="max-w-6xl mx-auto">
                 <h1 className="text-3xl font-bold text-slate-900 mb-8">Applicant Portal</h1>
-                
-                {/* Tabs */}
+
+                {fetchError && (
+                    <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700 text-sm">
+                        <AlertCircle className="w-4 h-4" /> {fetchError}
+                    </div>
+                )}
+
                 <div className="flex gap-4 mb-8 border-b border-slate-200 pb-1">
                     <button onClick={() => setActiveTab('browse')} className={`pb-3 px-4 font-medium ${activeTab === 'browse' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}>Browse Jobs</button>
                     <button onClick={() => setActiveTab('history')} className={`pb-3 px-4 font-medium ${activeTab === 'history' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}>My Applications</button>
@@ -78,17 +115,28 @@ const ApplicantDashboard = () => {
 
                 {activeTab === 'browse' ? (
                     <div className="grid gap-4">
+                        {applyError && (
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700 text-sm">
+                                <AlertCircle className="w-4 h-4" /> {applyError}
+                            </div>
+                        )}
                         {jobs.map(job => (
                             <div key={job.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                                 <h3 className="text-lg font-bold">{job.title}</h3>
                                 <p className="text-slate-500 text-sm mb-4">{job.company} • {job.location}</p>
                                 {applyingJobId === job.id ? (
-                                    <div className="flex gap-2">
-                                        <input type="file" onChange={e => setFile(e.target.files[0])} className="text-sm"/>
+                                    <div className="flex gap-2 flex-wrap">
+                                        <input
+                                            type="file"
+                                            accept="application/pdf"
+                                            onChange={handleFileChange}
+                                            className="text-sm"
+                                        />
                                         <button onClick={() => handleApply(job.id)} className="bg-green-600 text-white px-3 py-1 rounded text-sm">Confirm</button>
+                                        <button onClick={() => { setApplyingJobId(null); setApplyError(''); }} className="text-slate-400 text-sm px-2">Cancel</button>
                                     </div>
                                 ) : (
-                                    <button onClick={() => setApplyingJobId(job.id)} className="bg-slate-900 text-white px-4 py-2 rounded text-sm font-medium">Apply Now</button>
+                                    <button onClick={() => { setApplyingJobId(job.id); setApplyError(''); }} className="bg-slate-900 text-white px-4 py-2 rounded text-sm font-medium">Apply Now</button>
                                 )}
                             </div>
                         ))}
@@ -111,8 +159,9 @@ const ApplicantDashboard = () => {
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                                app.status === 'Accepted' ? 'bg-green-100 text-green-800' : 
-                                                app.status === 'Rejected' ? 'bg-red-100 text-red-800' : 
+                                                app.status === 'Accepted' ? 'bg-green-100 text-green-800' :
+                                                app.status === 'Rejected' ? 'bg-red-100 text-red-800' :
+                                                app.status === 'Interviewing' ? 'bg-blue-100 text-blue-800' :
                                                 'bg-yellow-100 text-yellow-800'
                                             }`}>
                                                 {app.status}
@@ -120,7 +169,7 @@ const ApplicantDashboard = () => {
                                         </td>
                                         <td className="px-6 py-4">
                                             {app.job && app.job.recruiter_id ? (
-                                                <button 
+                                                <button
                                                     onClick={() => openChat(app.job.recruiter_id, app.job.title)}
                                                     className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-sm font-medium"
                                                 >
@@ -149,11 +198,16 @@ const ApplicantDashboard = () => {
                         <button onClick={() => setActiveChat(null)} className="hover:text-slate-300"><X className="w-5 h-5" /></button>
                     </div>
 
+                    {chatError && (
+                        <div className="bg-red-50 border-b border-red-200 p-2 text-red-700 text-xs flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" /> {chatError}
+                        </div>
+                    )}
+
                     <div className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-3">
                         {messages.length === 0 && <p className="text-center text-xs text-slate-400 mt-4">Say hello to the recruiter!</p>}
                         {messages.map((msg) => {
-                            // If I am the SENDER, it appears on the right
-                            const isMe = msg.sender_id !== activeChat.id; 
+                            const isMe = msg.sender_id !== activeChat.id;
                             return (
                                 <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                                     <div className={`max-w-[80%] p-3 rounded-lg text-sm ${isMe ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none'}`}>
@@ -165,7 +219,7 @@ const ApplicantDashboard = () => {
                     </div>
 
                     <form onSubmit={sendMessage} className="p-3 border-t border-slate-200 bg-white flex gap-2">
-                        <input 
+                        <input
                             className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                             placeholder="Type a message..."
                             value={newMessage}

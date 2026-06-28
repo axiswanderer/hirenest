@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Text
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from core.database import Base
@@ -13,7 +13,6 @@ class User(Base):
     profile = relationship("Profile", back_populates="user", uselist=False)
     applications = relationship("Application", back_populates="applicant")
     jobs = relationship("Job", back_populates="recruiter")
-
     sent_messages = relationship("Message", foreign_keys="[Message.sender_id]", back_populates="sender")
     received_messages = relationship("Message", foreign_keys="[Message.receiver_id]", back_populates="receiver")
 
@@ -22,9 +21,9 @@ class Profile(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True)
     full_name = Column(String, nullable=True)
-    phone = Column(String, nullable=True)
-    portfolio = Column(String, nullable=True)
-    bio = Column(String, nullable=True)
+    phone = Column(String(20), nullable=True)
+    portfolio = Column(String(500), nullable=True)
+    bio = Column(Text, nullable=True)
     avatar_url = Column(String, nullable=True)
     user = relationship("User", back_populates="profile")
 
@@ -51,6 +50,9 @@ class Application(Base):
     job = relationship("Job", back_populates="applications")
     applicant = relationship("User", back_populates="applications")
 
+    __table_args__ = (
+        UniqueConstraint("job_id", "applicant_id", name="uq_application_job_applicant"),
+    )
 
 class Message(Base):
     __tablename__ = "messages"
@@ -59,6 +61,5 @@ class Message(Base):
     receiver_id = Column(Integer, ForeignKey("users.id"))
     content = Column(Text)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
-
     sender = relationship("User", foreign_keys=[sender_id], back_populates="sent_messages")
     receiver = relationship("User", foreign_keys=[receiver_id], back_populates="received_messages")

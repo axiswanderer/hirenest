@@ -2,32 +2,37 @@ import { useState } from 'react';
 import api from '../api/axios';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, User, Briefcase, Check, Loader2 } from 'lucide-react';
+import { Mail, Lock, User, Briefcase, Loader2, AlertCircle } from 'lucide-react';
 
 const Register = () => {
     const [formData, setFormData] = useState({ email: '', password: '', is_recruiter: false });
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setError('');
         setIsLoading(true);
         try {
             await api.post('/auth/register', formData);
-            // small delay to show success state before redirect
-            setTimeout(() => navigate('/login'), 1000);
+            setTimeout(() => navigate('/login'), 500);
         } catch (err) {
-            alert("Registration failed. Email might be taken.");
+            const detail = err.response?.data?.detail;
+            if (Array.isArray(detail)) {
+                setError(detail.map(d => d.msg).join(', '));
+            } else {
+                setError(detail || 'Registration failed. That email may already be taken.');
+            }
             setIsLoading(false);
         }
     };
 
     return (
         <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
-            {/* Background Glow */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[100px]" />
 
-            <motion.div 
+            <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.5 }}
@@ -39,13 +44,12 @@ const Register = () => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
-                    
                     {/* Role Selection Toggle */}
                     <div className="bg-slate-900/50 p-1 rounded-lg flex relative">
-                        <motion.div 
+                        <motion.div
                             className="absolute top-1 bottom-1 bg-slate-700 rounded-md shadow-sm"
                             initial={false}
-                            animate={{ 
+                            animate={{
                                 left: formData.is_recruiter ? '50%' : '4px',
                                 right: formData.is_recruiter ? '4px' : '50%'
                             }}
@@ -74,9 +78,9 @@ const Register = () => {
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                 <Mail className="h-5 w-5 text-slate-500" />
                             </div>
-                            <input 
-                                type="email" 
-                                required 
+                            <input
+                                type="email"
+                                required
                                 className="block w-full pl-10 pr-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                                 placeholder="name@company.com"
                                 onChange={e => setFormData({...formData, email: e.target.value})}
@@ -91,20 +95,32 @@ const Register = () => {
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                 <Lock className="h-5 w-5 text-slate-500" />
                             </div>
-                            <input 
-                                type="password" 
-                                required 
+                            <input
+                                type="password"
+                                required
+                                minLength={8}
                                 className="block w-full pl-10 pr-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                                placeholder="••••••••"
+                                placeholder="Min 8 chars, at least one number"
                                 onChange={e => setFormData({...formData, password: e.target.value})}
                             />
                         </div>
                     </div>
 
-                    <button 
-                        type="submit" 
+                    {error && (
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="bg-red-500/10 border border-red-500/50 rounded-lg p-3 flex items-center gap-2 text-red-400 text-sm"
+                        >
+                            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                            {error}
+                        </motion.div>
+                    )}
+
+                    <button
+                        type="submit"
                         disabled={isLoading}
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-blue-600/30 transition-all transform active:scale-95 flex justify-center items-center gap-2"
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-blue-600/30 transition-all transform active:scale-95 flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                     >
                         {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : "Create Account"}
                     </button>

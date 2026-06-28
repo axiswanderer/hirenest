@@ -1,6 +1,8 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator, HttpUrl
 from datetime import datetime
 from typing import Optional
+from enum import Enum
+
 
 # --- 1. PROFILE SCHEMAS ---
 class ProfileBase(BaseModel):
@@ -16,11 +18,21 @@ class ProfileResponse(ProfileBase):
     class Config:
         from_attributes = True
 
+
 # --- 2. USER SCHEMAS ---
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
     is_recruiter: bool = False
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one number")
+        return v
 
 class UserResponse(BaseModel):
     id: int
@@ -29,6 +41,7 @@ class UserResponse(BaseModel):
     profile: Optional[ProfileResponse] = None
     class Config:
         from_attributes = True
+
 
 # --- 3. JOB SCHEMAS ---
 class JobCreate(BaseModel):
@@ -44,7 +57,14 @@ class JobResponse(JobCreate):
     class Config:
         from_attributes = True
 
+
 # --- 4. APPLICATION SCHEMAS ---
+class ApplicationStatus(str, Enum):
+    pending = "Pending"
+    interviewing = "Interviewing"
+    accepted = "Accepted"
+    rejected = "Rejected"
+
 class ApplicationResponse(BaseModel):
     id: int
     job_id: int
@@ -53,13 +73,14 @@ class ApplicationResponse(BaseModel):
     status: str
     applicant_name: Optional[str] = None
     applicant: Optional[UserResponse] = None
-    job: Optional[JobResponse] = None 
-    
+    job: Optional[JobResponse] = None
+
     class Config:
         from_attributes = True
 
 class ApplicationStatusUpdate(BaseModel):
-    status: str
+    status: ApplicationStatus
+
 
 # --- 5. MESSAGE SCHEMAS ---
 class MessageCreate(BaseModel):

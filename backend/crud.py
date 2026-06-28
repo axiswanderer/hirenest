@@ -1,8 +1,9 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 import models, schemas
 from core.security import get_password_hash
 
-# --- USER ---
+
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
@@ -14,31 +15,33 @@ def create_user(db: Session, user: schemas.UserCreate):
     db.refresh(db_user)
     return db_user
 
-# --- JOBS ---
+
 def create_job(db: Session, job: schemas.JobCreate, recruiter_id: int):
-    # We unpack the job data (**job.dict()) and add the recruiter_id
     db_job = models.Job(**job.dict(), recruiter_id=recruiter_id)
     db.add(db_job)
     db.commit()
     db.refresh(db_job)
     return db_job
 
-def get_jobs(db: Session):
-    return db.query(models.Job).all()
+def get_jobs(db: Session, skip: int = 0, limit: int = 20):
+    return db.query(models.Job).order_by(models.Job.created_at.desc()).offset(skip).limit(limit).all()
 
-# --- APPLICATIONS ---
+
 def create_application(db: Session, job_id: int, user_id: int, name: str, resume_path: str):
-    # 'status' is automatically set to "Pending" by models.py default
     db_app = models.Application(
-        job_id=job_id, 
-        applicant_id=user_id, 
-        applicant_name=name, 
-        resume_path=resume_path
+        job_id=job_id,
+        applicant_id=user_id,
+        applicant_name=name,
+        resume_path=resume_path,
     )
     db.add(db_app)
-    db.commit()
-    db.refresh(db_app)
-    return db_app
+    try:
+        db.commit()
+        db.refresh(db_app)
+        return db_app
+    except IntegrityError:
+        db.rollback()
+        raise
 
 def get_applications_for_job(db: Session, job_id: int):
     return db.query(models.Application).filter(models.Application.job_id == job_id).all()
